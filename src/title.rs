@@ -47,4 +47,7 @@ pub fn draw_screen() {
         "Quit".to_string()
     );
     quit_button.draw();
+    if quit_button.is_clicked() {
+        std::process::exit(0);
+    }
 }
