@@ -7,7 +7,7 @@ pub enum Screen {
 }
 
 lazy_static::lazy_static! {
-    static ref current_screen: Mutex<Screen> = Mutex::new(Screen::Title);
+    static ref current_screen: Mutex<Screen> = Mutex::new(Screen::Game);
 }
 
 pub struct ScreenManager;

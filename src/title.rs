@@ -24,14 +24,25 @@ pub fn draw_screen() {
         20.0,
         WHITE
     );
+    
+    let course_name = "CI 210 - Introduction to Digital Learning";
+    let course_name_dim = measure_text(course_name, None, 20, 1.0);
+    draw_text(
+        course_name,
+        screen_width() / 2.0 - course_name_dim.width / 2.0,
+        screen_height() / 2.0 - course_name_dim.height / 2.0 - 40.0,
+        20.0,
+        WHITE
+    );
 
     let start_button = ui::button::Button::new(
         screen_width() / 2.0 - 100.0,
-        screen_height() / 2.0 - 25.0,
+        screen_height() / 2.0,
         200.0,
         50.0,
         GOLD,
-        "Play".to_string()
+        "Play".to_string(),
+        40.0
     );
     start_button.draw();
     if start_button.is_clicked() {
@@ -40,11 +51,12 @@ pub fn draw_screen() {
 
     let quit_button = ui::button::Button::new(
         screen_width() / 2.0 - 100.0,
-        screen_height() / 2.0 + 50.0,
+        screen_height() / 2.0 + 75.0,
         200.0,
         50.0,
         GOLD,
-        "Quit".to_string()
+        "Quit".to_string(),
+        40.0
     );
     quit_button.draw();
     if quit_button.is_clicked() {

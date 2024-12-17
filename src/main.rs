@@ -4,7 +4,7 @@ mod game;
 
 use macroquad::prelude::*;
 
-#[macroquad::main(conf, "MyGame")]
+#[macroquad::main(conf, "Word Quest")]
 async fn main() {
     loop {
         match ui::screen::ScreenManager::current_screen() {
@@ -15,6 +15,7 @@ async fn main() {
                     },
                     ui::screen::Screen::Game => {
                         game::draw_screen();
+                        game::update();
                     },
                 }
             }
@@ -23,7 +24,7 @@ async fn main() {
                 break;
             }
         }
-        
+
         next_frame().await
     }
 }
