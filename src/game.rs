@@ -1,9 +1,11 @@
 use macroquad::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use ::rand::Rng;
+
 use crate::ui;
+use crate::json;
 
 lazy_static! {
     static ref scoring: HashMap<char, i32> = {
@@ -73,7 +75,27 @@ pub fn draw_screen() {
     );
     play_button.draw();
     if play_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
-        
+        let words_db = json::get_available_words();
+        if words_db.contains(&*current_word.lock().unwrap()) {
+            println!("Score: {}", score_word());
+        } else {
+            println!("Word not found in database");
+        }
+        clear_word();
+    }
+
+    let x_button = ui::button::Button::new(
+        screen_width() - 165.0,
+        screen_height() - 150.0,
+        50.0,
+        50.0,
+        RED,
+        "X".to_string(),
+        40.0
+    );
+    x_button.draw();
+    if x_button.is_clicked() {
+        clear_word();
     }
     
     let shuffle_button = ui::button::Button::new(
@@ -177,6 +199,7 @@ fn discard_tiles() {
     } else {
         println!("Error: Failed to get tiles lock");
     }
+    clear_word();
 }
 
 fn clear_word() {
@@ -184,6 +207,23 @@ fn clear_word() {
         word.clear();
     } else {
         println!("Error: Failed to get current word lock");
+    }
+}
+
+fn score_word() -> i32 {
+    if let Ok(word) = current_word.lock() {
+        let mut score = 0;
+        for c in word.chars() {
+            if let Some(s) = scoring.get(&c) {
+                score += s;
+            }
+        }
+
+        score
+    } else {
+        println!("Error: Failed to get current word lock");
+
+        0
     }
 }
 

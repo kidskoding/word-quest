@@ -1,6 +1,7 @@
 mod ui;
 mod title;
 mod game;
+mod json;
 
 use macroquad::prelude::*;
 

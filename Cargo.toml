@@ -7,3 +7,5 @@ edition = "2021"
 macroquad = "0.4.13"
 lazy_static = "1.5.0"
 rand = "0.8.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
