@@ -2,6 +2,8 @@ mod ui;
 mod title;
 mod game;
 mod json;
+mod lose_screen;
+mod round_win_screen;
 
 use macroquad::prelude::*;
 
@@ -16,8 +18,14 @@ async fn main() {
                     },
                     ui::screen::Screen::Game => {
                         game::draw_screen();
-                        game::update();
                     },
+                    ui::screen::Screen::LoseScreen => {
+                        lose_screen::draw_screen();
+                    }
+                    ui::screen::Screen::RoundWinScreen => {
+                        round_win_screen::draw_screen();
+                    }
+                    _ => return,
                 }
             }
             None => {

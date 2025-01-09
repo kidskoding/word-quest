@@ -1,11 +1,15 @@
 use macroquad::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::fs::File;
+use std::io::Write;
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use ::rand::Rng;
 
 use crate::ui;
 use crate::json;
+use crate::ui::screen::{Screen, ScreenManager};
 
 lazy_static! {
     static ref scoring: HashMap<char, i32> = {
@@ -27,12 +31,56 @@ lazy_static! {
 
         map
     };
+    
     static ref words: Vec<char> = scoring.keys().cloned().collect();
     static ref tiles: Mutex<Vec<ui::tile::Tile>> = Mutex::new(Vec::new());
     static ref current_word: Mutex<String> = Mutex::new(String::new());
-    static ref total_score: Mutex<i32> = Mutex::new(0);
-    static ref words_db: HashSet<String> = json::get_available_words().into_iter().collect();
+    
+    static ref round_score: Mutex<u64> = Mutex::new(750);
+    pub static ref total_score: Mutex<i32> = Mutex::new(0);
+    
+    static ref words_db: HashSet<String> = initialize_words_db()
+        .expect("Failed to initialize words database: Could not load or deserialize the cache");
+    static ref words_remaining: Mutex<u32> = Mutex::new(4);
     static ref discards: Mutex<u32> = Mutex::new(3);
+    static ref round: Mutex<u32> = Mutex::new(1);
+    
+    static ref guessed_words: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    static ref filtered_words: HashSet<String> = {
+        let mut set = HashSet::new();
+        for c in 'a'..='z' {
+            set.insert(c.to_string());
+        }
+        set
+    };
+}
+
+fn initialize_words_db() -> Result<HashSet<String>, String> {
+    let cache_file = "src/words_cache.json";
+
+    if let Ok(cache_contents) = fs::read_to_string(&cache_file) {
+        if let Ok(cached_words) = serde_json::from_str(&cache_contents) {
+            return Ok(cached_words);
+        }
+    }
+
+    let db: HashSet<_> = HashSet::from_iter(json::get_available_words());
+
+    match serde_json::to_string(&db) {
+        Ok(serialized) => {
+            match File::create(cache_file) {
+                Ok(mut file) => {
+                    if let Err(e) = file.write_all(serialized.as_bytes()) {
+                        return Err(format!("Failed to write to cache file: {}", e));
+                    }
+                },
+                Err(e) => return Err(format!("Failed to create or overwrite cache file: {}", e)),
+            }
+        },
+        Err(e) => return Err(format!("Failed to serialize empty words database: {}", e)),
+    }
+
+    Ok(db)
 }
 
 pub fn draw_screen() {
@@ -72,7 +120,7 @@ pub fn draw_screen() {
     play_button.draw();
     if play_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
         let score = score_word().unwrap_or(0);
-        // clear_word();
+        clear_word();
         if let Ok(mut guard) = total_score.lock() {
             *guard += score;
         }
@@ -88,7 +136,7 @@ pub fn draw_screen() {
         40.0
     );
     x_button.draw();
-    if x_button.is_clicked() {
+    if x_button.is_clicked() || is_key_pressed(KeyCode::Backspace) {
         clear_word();
     }
     
@@ -119,6 +167,8 @@ pub fn draw_screen() {
     if discard_button.is_clicked() {
         discard_tiles();
     }
+    
+    update();
 }
 
 fn draw_hud() {
@@ -145,14 +195,16 @@ fn draw_hud() {
         55.0,
         WHITE
     );
-    draw_text(
-        "750",
-        125.0 + 190.0
-            - measure_text("750", None, 40, 1.0).width / 2.0,
-        250.0 - 50.0,
-        60.0,
-        WHITE
-    );
+    if let Ok(guard) = round_score.lock() {
+        draw_text(
+            &*guard.to_string(),
+            125.0 + 190.0
+                - measure_text(&*guard.to_string(), None, 40, 1.0).width / 2.0,
+            250.0 - 50.0,
+            60.0,
+            WHITE
+        );    
+    }
     
     draw_rectangle(
         125.0,
@@ -183,7 +235,7 @@ fn draw_hud() {
     } else {
         println!("Error: Failed to get total score lock");
     }
-    
+
     draw_rectangle(
         175.0,
         360.0,
@@ -232,13 +284,16 @@ fn draw_hud() {
         30.0,
         BLACK
     );
-    draw_text(
-        "4",
-        175.0 + 125.0 / 2.0 - measure_text("4", None, 50, 1.0).width / 2.0,
-        460.0 + 60.0,
-        50.0,
-        BLACK
-    );
+    if let Ok(guard) = words_remaining.lock() {
+        let w = &*guard.to_string();
+        draw_text(
+            &w,
+            175.0 + 125.0 / 2.0 - measure_text(&w, None, 50, 1.0).width / 2.0,
+            460.0 + 60.0,
+            50.0,
+            BLACK
+        );
+    }
 
     draw_rectangle(
         350.0,
@@ -275,22 +330,7 @@ fn draw_hud() {
     }
 
     draw_rectangle(
-        175.0,
-        560.0,
-        125.0,
-        75.0,
-        BLACK
-    );
-    draw_text(
-        "Options",
-        175.0 + 125.0 / 2.0 - measure_text("Options", None, 30, 1.0).width / 2.0,
-        560.0 + 55.0 - measure_text("Options", None, 30, 1.0).height / 2.0,
-        30.0,
-        WHITE
-    );
-    
-    draw_rectangle(
-        350.0,
+        350.0 - 90.0,
         560.0,
         125.0,
         75.0,
@@ -298,18 +338,20 @@ fn draw_hud() {
     );
     draw_text(
         "Round",
-        350.0 + 125.0 / 2.0 - measure_text("Round", None, 30, 1.0).width / 2.0,
+        350.0 - 90.0 + 125.0 / 2.0 - measure_text("Round", None, 30, 1.0).width / 2.0,
         560.0 + 25.0,
         30.0,
         WHITE
     );
-    draw_text(
-        "2",
-        350.0 + 125.0 / 2.0 - measure_text("2", None, 50, 1.0).width / 2.0,
-        560.0 + 60.0,
-        50.0,
-        WHITE
-    );
+    if let Ok(guard) = round.lock() {
+        draw_text(
+            &*guard.to_string(),
+            350.0 - 90.0 + 125.0 / 2.0 - measure_text(&*guard.to_string(), None, 50, 1.0).width / 2.0,
+            560.0 + 60.0,
+            50.0,
+            WHITE
+        );    
+    }
 }
 
 fn draw_tiles() {
@@ -401,32 +443,24 @@ fn clear_word() {
 }
 
 fn score_word() -> Option<i32> {
-    let word = match current_word.lock() {
-        Ok(word) => word.clone(),
-        Err(_) => {
-            clear_word();
-            return None;
+    let mut temp = words_remaining.lock().unwrap();
+    if *temp > 0 {
+        let word = current_word.lock().unwrap();
+        let set: HashSet<_> = word.chars().collect();
+        if words_db.contains(&word.clone()) && !guessed_words.lock().unwrap().contains(&word.clone())
+            && set.len() != 1 {
+            let score = word.chars().map(|c| scoring.get(&c).unwrap_or(&0)).sum::<i32>()
+                * word.len() as i32;
+            guessed_words.lock().unwrap().insert(word.clone());
+            *temp -= 1;
+            return Some(score);
         }
-    };
-
-    if !words_db.contains(&word) {
-        return None;
+        *temp -= 1;
     }
-
-    let mut score = 0;
-    for c in word.chars() {
-        if let Some(s) = scoring.get(&c) {
-            score += s;
-        } else {
-            return None;
-        }
-    }
-
-    clear_word();
-    Some(score)
+    None
 }
 
-pub fn update() {
+fn update() {
     if let Ok(mut word) = current_word.lock() {
         if let Ok(mut guard) = tiles.lock() {
             for tile in guard.iter_mut() {
@@ -434,8 +468,6 @@ pub fn update() {
                 if let Some(key_code) = char_to_key_code(tile_letter) {
                     if is_key_pressed(key_code) || tile.is_clicked() {
                         word.push(tile_letter);
-                    } else if is_key_pressed(KeyCode::Backspace) {
-                        word.pop();
                     }
                 }
             }
@@ -444,6 +476,42 @@ pub fn update() {
         }
     } else {
         println!("Error: Failed to get current word lock");
+    }
+    
+    if let Ok(mut guard) = total_score.lock() {
+        if let Ok(mut rs) = round_score.lock() {
+            if *guard >= *rs as i32 {
+                ScreenManager::switch_screen(Screen::RoundWinScreen);
+                *rs *= 2;
+                if let Ok(mut d) = discards.lock() {
+                    *d = 3;
+                }
+                if let Ok(mut w) = words_remaining.lock() {
+                    *w = 4;
+                }
+                if let Ok(mut rounds) = round.lock() {
+                    if *rounds == 5 {
+                        ScreenManager::switch_screen(Screen::WinScreen);
+                    } else {
+                        *rounds = *rounds + 1;
+                    }
+                }
+                *guard = 0;
+            }
+        }
+    }
+    
+    if let Ok(mut guard) = words_remaining.lock() {
+        if *guard == 0 {
+            ScreenManager::switch_screen(Screen::LoseScreen);
+            *guard = 4;
+            if let Ok(mut guard) = discards.lock() {
+                *guard = 3;
+            }
+            if let Ok(mut total) = total_score.lock() {
+                *total = 0;
+            }
+        }
     }
 }
 fn char_to_key_code(c: char) -> Option<KeyCode> {

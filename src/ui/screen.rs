@@ -4,10 +4,13 @@ use std::sync::Mutex;
 pub enum Screen {
     Title,
     Game,
+    LoseScreen,
+    RoundWinScreen,
+    WinScreen,
 }
 
 lazy_static::lazy_static! {
-    static ref current_screen: Mutex<Screen> = Mutex::new(Screen::Game);
+    static ref current_screen: Mutex<Screen> = Mutex::new(Screen::Title);
 }
 
 pub struct ScreenManager;
