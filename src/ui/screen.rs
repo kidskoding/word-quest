@@ -3,6 +3,7 @@ use std::sync::Mutex;
 #[derive(Clone, Debug)]
 pub enum Screen {
     Title,
+    Instructions,
     Game,
     LoseScreen,
     RoundWinScreen,

@@ -31,22 +31,22 @@ lazy_static! {
 
         map
     };
-    
+
     static ref words: Vec<char> = scoring.keys().cloned().collect();
     static ref tiles: Mutex<Vec<ui::tile::Tile>> = Mutex::new(Vec::new());
     static ref current_word: Mutex<String> = Mutex::new(String::new());
-    
+
     static ref round_score: Mutex<u64> = Mutex::new(750);
     static ref total_score: Mutex<i32> = Mutex::new(0);
-    
+
     static ref words_db: HashSet<String> = initialize_words_db()
         .expect("Failed to initialize words database: Could not load or deserialize the cache");
-    
+
     static ref words_remaining: Mutex<u32> = Mutex::new(4);
     static ref discards: Mutex<u32> = Mutex::new(3);
     static ref round: Mutex<u32> = Mutex::new(1);
     static ref guessed_words: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-    
+
     static ref filtered_words: HashSet<String> = {
         let mut set = HashSet::new();
         for c in 'a'..='z' {
@@ -119,11 +119,13 @@ pub fn draw_screen() {
         35.0
     );
     play_button.draw();
-    if play_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
-        let score = score_word().unwrap_or(0);
-        clear_word();
-        if let Ok(mut guard) = total_score.lock() {
-            *guard += score;
+    if let Ok(guard) = current_word.lock() {
+        if guard.len() != 0 && (play_button.is_clicked() || is_key_pressed(KeyCode::Enter)) {
+            let score = score_word().unwrap_or(0);
+            clear_word();
+            if let Ok(mut guard) = total_score.lock() {
+                *guard += score;
+            }
         }
     }
 
@@ -168,7 +170,7 @@ pub fn draw_screen() {
     if discard_button.is_clicked() {
         discard_tiles();
     }
-    
+
     update();
 }
 
@@ -204,7 +206,7 @@ fn draw_hud() {
             250.0 - 50.0,
             60.0,
             WHITE
-        );    
+        );
     }
     
     draw_rectangle(
@@ -217,60 +219,28 @@ fn draw_hud() {
     draw_text(
         "Round Score",
         125.0 + 400.0 / 2.0
-            - measure_text("Total Score", None, 30, 1.0).width / 2.0,
-        250.0 + 50.0
-            - measure_text("Total Score", None, 30, 1.0).height / 2.0,
-        30.0,
+            - measure_text("Total Score", None, 50, 1.0).width / 2.0,
+        250.0 + 90.0
+            - measure_text("Total Score", None, 50, 1.0).height / 2.0,
+        50.0,
         BLACK
     );
     if let Ok(guard) = total_score.lock() {
         draw_text(
             &guard.to_string(),
             125.0 + 400.0 / 2.0
-                - measure_text(&guard.to_string(), None, 80, 1.0).width / 2.0,
-            250.0 + 120.0
-                - measure_text(&guard.to_string(), None, 80, 1.0).height / 2.0,
-            80.0,
+                - measure_text(&guard.to_string(), None, 120, 1.0).width / 2.0,
+            250.0 + 190.0
+                - measure_text(&guard.to_string(), None, 120, 1.0).height / 2.0,
+            120.0,
             BLACK
         );
     } else {
         println!("Error: Failed to get total score lock");
     }
 
-    draw_rectangle(
-        175.0,
-        360.0,
-        125.0,
-        75.0,
-        SKYBLUE
-    );
-
     let coral_rgba = Color::new(255.0 / 255.0, 127.0 / 255.0, 80.0 / 255.0, 1.0);
-    draw_rectangle(
-        350.0,
-        360.0,
-        125.0,
-        75.0,
-        coral_rgba
-    );
-
-    let rect1_center_x = 175.0 + 125.0 / 2.0;
-    let rect2_center_x = 350.0 + 125.0 / 2.0;
-    let center_x = (rect1_center_x + rect2_center_x) / 2.0;
-    let center_y = 360.0 + 75.0 / 2.0;
-    let cross_size = 20.0;
-
-    draw_line(
-        center_x - cross_size / 2.0, center_y - cross_size / 2.0,
-        center_x + cross_size / 2.0, center_y + cross_size / 2.0,
-        5.0, BLACK
-    );
-    draw_line(
-        center_x + cross_size / 2.0, center_y - cross_size / 2.0,
-        center_x - cross_size / 2.0, center_y + cross_size / 2.0,
-        5.0, BLACK
-    );
-
+    
     draw_rectangle(
         175.0,
         460.0,
@@ -351,7 +321,7 @@ fn draw_hud() {
             560.0 + 60.0,
             50.0,
             WHITE
-        );    
+        );
     }
 }
 
@@ -478,12 +448,12 @@ fn update() {
     } else {
         println!("Error: Failed to get current word lock");
     }
-    
+
     if let Ok(mut guard) = total_score.lock() {
         if let Ok(mut rs) = round_score.lock() {
             if *guard >= *rs as i32 {
                 ScreenManager::switch_screen(Screen::RoundWinScreen);
-                *rs *= 2;
+                *rs += 100;
                 discard_tiles();
                 if let Ok(mut d) = discards.lock() {
                     *d = 3;
@@ -505,7 +475,7 @@ fn update() {
             }
         }
     }
-    
+
     if let Ok(mut guard) = words_remaining.lock() {
         if *guard == 0 {
             ScreenManager::switch_screen(Screen::LoseScreen);
@@ -516,6 +486,12 @@ fn update() {
             }
             if let Ok(mut total) = total_score.lock() {
                 *total = 0;
+            }
+            if let Ok(mut guard) = round_score.lock() {
+                *guard = 750;
+            }
+            if let Ok(mut guard) = round.lock() {
+                *guard = 1;
             }
         }
     }
