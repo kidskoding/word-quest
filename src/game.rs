@@ -1,5 +1,5 @@
 use macroquad::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use lazy_static::lazy_static;
 use ::rand::Rng;
@@ -30,21 +30,17 @@ lazy_static! {
     static ref words: Vec<char> = scoring.keys().cloned().collect();
     static ref tiles: Mutex<Vec<ui::tile::Tile>> = Mutex::new(Vec::new());
     static ref current_word: Mutex<String> = Mutex::new(String::new());
+    static ref total_score: Mutex<i32> = Mutex::new(0);
+    static ref words_db: HashSet<String> = json::get_available_words().into_iter().collect();
+    static ref discards: Mutex<u32> = Mutex::new(3);
 }
 
 pub fn draw_screen() {
     clear_background(DARKGRAY);
     
-    draw_rectangle(
-        100.0,
-        100.0,
-        450.0,
-        475.0,
-        WHITE
-    );
+    draw_hud();
     
     draw_tiles();
-
     draw_rectangle(
         screen_width() / 2.0 + 50.0,
         screen_height() - 225.0,
@@ -52,7 +48,7 @@ pub fn draw_screen() {
         50.0,
         WHITE
     );
-
+    
     if let Ok(word) = current_word.lock() {
         let letter_dim = measure_text(&word, None, 40, 1.0);
         draw_text(
@@ -75,13 +71,11 @@ pub fn draw_screen() {
     );
     play_button.draw();
     if play_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
-        let words_db = json::get_available_words();
-        if words_db.contains(&*current_word.lock().unwrap()) {
-            println!("Score: {}", score_word());
-        } else {
-            println!("Word not found in database");
+        let score = score_word().unwrap_or(0);
+        // clear_word();
+        if let Ok(mut guard) = total_score.lock() {
+            *guard += score;
         }
-        clear_word();
     }
 
     let x_button = ui::button::Button::new(
@@ -124,6 +118,160 @@ pub fn draw_screen() {
     discard_button.draw();
     if discard_button.is_clicked() {
         discard_tiles();
+    }
+}
+
+fn draw_hud() {
+    draw_rectangle(
+        100.0,
+        50.0,
+        450.0,
+        600.0,
+        WHITE
+    );
+    
+    draw_rectangle(
+        125.0,
+        75.0,
+        400.0,
+        150.0,
+        BLACK
+    );
+    draw_text(
+        "Score at least",
+        125.0 + 300.0 / 2.0
+            - measure_text("Score at least", None, 40, 1.0).width / 2.0,
+        190.0 - 50.0,
+        55.0,
+        WHITE
+    );
+    draw_text(
+        "50",
+        125.0 + 190.0
+            - measure_text("50", None, 40, 1.0).width / 2.0,
+        250.0 - 50.0,
+        60.0,
+        WHITE
+    );
+    
+    draw_rectangle(
+        125.0,
+        250.0,
+        400.0,
+        200.0,
+        LIME
+    );
+    draw_text(
+        "Round Score",
+        125.0 + 400.0 / 2.0
+            - measure_text("Total Score", None, 30, 1.0).width / 2.0,
+        250.0 + 50.0
+            - measure_text("Total Score", None, 30, 1.0).height / 2.0,
+        30.0,
+        BLACK
+    );
+    if let Ok(guard) = total_score.lock() {
+        draw_text(
+            &guard.to_string(),
+            125.0 + 400.0 / 2.0
+                - measure_text(&guard.to_string(), None, 80, 1.0).width / 2.0,
+            250.0 + 120.0
+                - measure_text(&guard.to_string(), None, 80, 1.0).height / 2.0,
+            80.0,
+            BLACK
+        );
+    } else {
+        println!("Error: Failed to get total score lock");
+    }
+    
+    draw_rectangle(
+        175.0,
+        360.0,
+        125.0,
+        75.0,
+        SKYBLUE
+    );
+
+    let coral_rgba = Color::new(255.0 / 255.0, 127.0 / 255.0, 80.0 / 255.0, 1.0);
+    draw_rectangle(
+        350.0,
+        360.0,
+        125.0,
+        75.0,
+        coral_rgba
+    );
+
+    let rect1_center_x = 175.0 + 125.0 / 2.0;
+    let rect2_center_x = 350.0 + 125.0 / 2.0;
+    let center_x = (rect1_center_x + rect2_center_x) / 2.0;
+    let center_y = 360.0 + 75.0 / 2.0;
+    let cross_size = 20.0;
+
+    draw_line(
+        center_x - cross_size / 2.0, center_y - cross_size / 2.0,
+        center_x + cross_size / 2.0, center_y + cross_size / 2.0,
+        5.0, BLACK
+    );
+    draw_line(
+        center_x + cross_size / 2.0, center_y - cross_size / 2.0,
+        center_x - cross_size / 2.0, center_y + cross_size / 2.0,
+        5.0, BLACK
+    );
+
+    draw_rectangle(
+        175.0,
+        460.0,
+        125.0,
+        75.0,
+        SKYBLUE
+    );
+    draw_text(
+        "Words",
+        175.0 + 125.0 / 2.0 - measure_text("Words", None, 30, 1.0).width / 2.0,
+        460.0 + 25.0,
+        30.0,
+        BLACK
+    );
+    draw_text(
+        "4",
+        175.0 + 125.0 / 2.0 - measure_text("4", None, 50, 1.0).width / 2.0,
+        460.0 + 60.0,
+        50.0,
+        BLACK
+    );
+
+    draw_rectangle(
+        350.0,
+        460.0,
+        125.0,
+        75.0,
+        coral_rgba
+    );
+    draw_text(
+        "Discards",
+        350.0 + 125.0 / 2.0 - measure_text("Discards", None, 30, 1.0).width / 2.0,
+        460.0 + 25.0,
+        30.0,
+        BLACK
+    );
+    
+    if let Ok(guard) = discards.lock() {
+        let d = &*guard.to_string();
+        draw_text(
+            &d,
+            350.0 + 125.0 / 2.0 - measure_text(&d, None, 50, 1.0).width / 2.0,
+            460.0 + 60.0,
+            50.0,
+            BLACK
+        );
+    } else {
+        draw_text(
+            "0",
+            350.0 + 125.0 / 2.0 - measure_text("0", None, 50, 1.0).width / 2.0,
+            460.0 + 60.0,
+            50.0,
+            BLACK
+        );
     }
 }
 
@@ -194,12 +342,17 @@ fn shuffle_tiles() {
 }
 
 fn discard_tiles() {
-    if let Ok(mut guard) = tiles.lock() {
-        guard.clear();
-    } else {
-        println!("Error: Failed to get tiles lock");
+    if let Ok(mut guard1) = discards.lock() {
+        if *guard1 > 0 {
+            if let Ok(mut guard2) = tiles.lock() {
+                guard2.clear();
+            } else {
+                println!("Error: Failed to get tiles lock");
+            }
+            *guard1 -= 1;
+            clear_word();
+        }
     }
-    clear_word();
 }
 
 fn clear_word() {
@@ -210,21 +363,30 @@ fn clear_word() {
     }
 }
 
-fn score_word() -> i32 {
-    if let Ok(word) = current_word.lock() {
-        let mut score = 0;
-        for c in word.chars() {
-            if let Some(s) = scoring.get(&c) {
-                score += s;
-            }
+fn score_word() -> Option<i32> {
+    let word = match current_word.lock() {
+        Ok(word) => word.clone(),
+        Err(_) => {
+            clear_word();
+            return None;
         }
+    };
 
-        score
-    } else {
-        println!("Error: Failed to get current word lock");
-
-        0
+    if !words_db.contains(&word) {
+        return None;
     }
+
+    let mut score = 0;
+    for c in word.chars() {
+        if let Some(s) = scoring.get(&c) {
+            score += s;
+        } else {
+            return None;
+        }
+    }
+
+    clear_word();
+    Some(score)
 }
 
 pub fn update() {
@@ -235,6 +397,8 @@ pub fn update() {
                 if let Some(key_code) = char_to_key_code(tile_letter) {
                     if is_key_pressed(key_code) || tile.is_clicked() {
                         word.push(tile_letter);
+                    } else if is_key_pressed(KeyCode::Backspace) {
+                        word.pop();
                     }
                 }
             }
