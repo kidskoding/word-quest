@@ -146,9 +146,9 @@ fn draw_hud() {
         WHITE
     );
     draw_text(
-        "50",
+        "750",
         125.0 + 190.0
-            - measure_text("50", None, 40, 1.0).width / 2.0,
+            - measure_text("750", None, 40, 1.0).width / 2.0,
         250.0 - 50.0,
         60.0,
         WHITE
@@ -254,7 +254,7 @@ fn draw_hud() {
         30.0,
         BLACK
     );
-    
+
     if let Ok(guard) = discards.lock() {
         let d = &*guard.to_string();
         draw_text(
@@ -273,6 +273,43 @@ fn draw_hud() {
             BLACK
         );
     }
+
+    draw_rectangle(
+        175.0,
+        560.0,
+        125.0,
+        75.0,
+        BLACK
+    );
+    draw_text(
+        "Options",
+        175.0 + 125.0 / 2.0 - measure_text("Options", None, 30, 1.0).width / 2.0,
+        560.0 + 55.0 - measure_text("Options", None, 30, 1.0).height / 2.0,
+        30.0,
+        WHITE
+    );
+    
+    draw_rectangle(
+        350.0,
+        560.0,
+        125.0,
+        75.0,
+        BLACK
+    );
+    draw_text(
+        "Round",
+        350.0 + 125.0 / 2.0 - measure_text("Round", None, 30, 1.0).width / 2.0,
+        560.0 + 25.0,
+        30.0,
+        WHITE
+    );
+    draw_text(
+        "2",
+        350.0 + 125.0 / 2.0 - measure_text("2", None, 50, 1.0).width / 2.0,
+        560.0 + 60.0,
+        50.0,
+        WHITE
+    );
 }
 
 fn draw_tiles() {
