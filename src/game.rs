@@ -37,15 +37,16 @@ lazy_static! {
     static ref current_word: Mutex<String> = Mutex::new(String::new());
     
     static ref round_score: Mutex<u64> = Mutex::new(750);
-    pub static ref total_score: Mutex<i32> = Mutex::new(0);
+    static ref total_score: Mutex<i32> = Mutex::new(0);
     
     static ref words_db: HashSet<String> = initialize_words_db()
         .expect("Failed to initialize words database: Could not load or deserialize the cache");
+    
     static ref words_remaining: Mutex<u32> = Mutex::new(4);
     static ref discards: Mutex<u32> = Mutex::new(3);
     static ref round: Mutex<u32> = Mutex::new(1);
-    
     static ref guessed_words: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
+    
     static ref filtered_words: HashSet<String> = {
         let mut set = HashSet::new();
         for c in 'a'..='z' {
@@ -483,6 +484,7 @@ fn update() {
             if *guard >= *rs as i32 {
                 ScreenManager::switch_screen(Screen::RoundWinScreen);
                 *rs *= 2;
+                discard_tiles();
                 if let Ok(mut d) = discards.lock() {
                     *d = 3;
                 }
@@ -496,6 +498,9 @@ fn update() {
                         *rounds = *rounds + 1;
                     }
                 }
+                if let Ok(mut gw) = guessed_words.lock() {
+                    *gw = HashSet::new();
+                }
                 *guard = 0;
             }
         }
@@ -505,6 +510,7 @@ fn update() {
         if *guard == 0 {
             ScreenManager::switch_screen(Screen::LoseScreen);
             *guard = 4;
+            discard_tiles();
             if let Ok(mut guard) = discards.lock() {
                 *guard = 3;
             }
