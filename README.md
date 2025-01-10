@@ -23,4 +23,3 @@ The score of each word is the total score of all characters along with a score m
 - Press BACKSPACE or 'X' to clear the current word
 - Use 'Shuffle' to rearrange tiles
 - Use 'Discard' to get new tiles (3 per round)
-A simple word roguelike game developed with Rust and Macroquad
