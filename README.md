@@ -1,7 +1,7 @@
 # word-quest
 A simple word roguelike game developed with Rust.
 
-Play Now! at https://kidskoding.itch.io/word-quest. Linux support is coming soon!!!
+Play Now! at https://kidskoding.itch.io/word-quest. Linux and Mac support is coming soon!!!
 
 Create words using the given letter tiles to reach the target score for each round. You win the game if you can survive 5 rounds! If you can't reach the target score in 4 attempts, the game is over!
 
