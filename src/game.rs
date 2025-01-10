@@ -1,59 +1,71 @@
 use macroquad::prelude::*;
+
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::sync::Mutex;
-use lazy_static::lazy_static;
 use ::rand::Rng;
-
+use once_cell::sync::Lazy;
 use crate::ui;
 use crate::json;
 use crate::ui::screen::{Screen, ScreenManager};
 
-lazy_static! {
-    static ref scoring: HashMap<char, i32> = {
-        let mut map = HashMap::new();
-        map.insert('e', 10); map.insert('a', 10); map.insert('t', 10);
+static mut game_state: Lazy<GameState> = Lazy::new(|| GameState::new());
 
-        map.insert('h', 15); map.insert('i', 15); map.insert('n', 15);
-        map.insert('o', 15); map.insert('s', 15); map.insert('r', 15);
+#[derive(Default)]
+struct GameState {
+    scoring: HashMap<char, i32>,
+    words: Vec<char>,
+    tiles: Vec<ui::tile::Tile>,
+    current_word: String,
+    round_score: u64,
+    total_score: i32,
+    words_db: HashSet<String>,
+    words_remaining: u32,
+    discards: u32,
+    round: u32,
+    guessed_words: HashSet<String>,
+    filtered_words: HashSet<String>,
+}
 
-        map.insert('d', 20); map.insert('l', 20);
+impl GameState {
+    fn new() -> Self {
+        let scoring = {
+            let mut map = HashMap::new();
+            map.insert('e', 10); map.insert('a', 10); map.insert('t', 10);
+            map.insert('h', 15); map.insert('i', 15); map.insert('n', 15);
+            map.insert('o', 15); map.insert('s', 15); map.insert('r', 15);
+            map.insert('d', 20); map.insert('l', 20);
+            map.insert('u', 25); map.insert('f', 25); map.insert('m', 25);
+            map.insert('c', 25); map.insert('g', 25); map.insert('y', 25);
+            map.insert('p', 30); map.insert('b', 30); map.insert('w', 30);
+            map.insert('v', 35); map.insert('k', 35); map.insert('j', 35);
+            map.insert('x', 35); map.insert('q', 35); map.insert('z', 35);
+            map
+        };
 
-        map.insert('u', 25); map.insert('f', 25); map.insert('m', 25);
-        map.insert('c', 25); map.insert('g', 25); map.insert('y', 25);
+        let words: Vec<char> = scoring.keys().cloned().collect();
 
-        map.insert('p', 30); map.insert('b', 30); map.insert('w', 30);
+        let words_db = initialize_words_db()
+            .expect("Failed to initialize words database: Could not load or deserialize the cache");
 
-        map.insert('v', 35); map.insert('k', 35); map.insert('j', 35);
-        map.insert('x', 35); map.insert('q', 35); map.insert('z', 35);
+        let filtered_words = ('a'..='z').map(|c| c.to_string()).collect();
 
-        map
-    };
-
-    static ref words: Vec<char> = scoring.keys().cloned().collect();
-    static ref tiles: Mutex<Vec<ui::tile::Tile>> = Mutex::new(Vec::new());
-    static ref current_word: Mutex<String> = Mutex::new(String::new());
-
-    static ref round_score: Mutex<u64> = Mutex::new(750);
-    static ref total_score: Mutex<i32> = Mutex::new(0);
-
-    static ref words_db: HashSet<String> = initialize_words_db()
-        .expect("Failed to initialize words database: Could not load or deserialize the cache");
-
-    static ref words_remaining: Mutex<u32> = Mutex::new(4);
-    static ref discards: Mutex<u32> = Mutex::new(3);
-    static ref round: Mutex<u32> = Mutex::new(1);
-    static ref guessed_words: Mutex<HashSet<String>> = Mutex::new(HashSet::new());
-
-    static ref filtered_words: HashSet<String> = {
-        let mut set = HashSet::new();
-        for c in 'a'..='z' {
-            set.insert(c.to_string());
+        GameState {
+            scoring,
+            words,
+            tiles: Vec::new(),
+            current_word: String::new(),
+            round_score: 750,
+            total_score: 0,
+            words_db,
+            words_remaining: 4,
+            discards: 3,
+            round: 1,
+            guessed_words: HashSet::new(),
+            filtered_words,
         }
-        set
-    };
+    }
 }
 
 fn initialize_words_db() -> Result<HashSet<String>, String> {
@@ -84,7 +96,7 @@ fn initialize_words_db() -> Result<HashSet<String>, String> {
     Ok(db)
 }
 
-pub fn draw_screen() {
+pub unsafe fn draw_screen() {
     clear_background(DARKGRAY);
     
     draw_hud();
@@ -97,17 +109,15 @@ pub fn draw_screen() {
         50.0,
         WHITE
     );
-    
-    if let Ok(word) = current_word.lock() {
-        let letter_dim = measure_text(&word, None, 40, 1.0);
-        draw_text(
-            &word,
-            screen_width() / 2.0 + 50.0 + 475.0 / 2.0 - letter_dim.width / 2.0,
-            screen_height() - 225.0 + 35.0,
-            40.0,
-            BLACK
-        );
-    }
+
+    let letter_dim = measure_text(&game_state.current_word, None, 40, 1.0);
+    draw_text(
+        &game_state.current_word,
+        screen_width() / 2.0 + 50.0 + 475.0 / 2.0 - letter_dim.width / 2.0,
+        screen_height() - 225.0 + 35.0,
+        40.0,
+        BLACK
+    );
     
     let play_button = ui::button::Button::new(
         screen_width() / 2.0 + 200.0,
@@ -119,14 +129,11 @@ pub fn draw_screen() {
         35.0
     );
     play_button.draw();
-    if let Ok(guard) = current_word.lock() {
-        if guard.len() != 0 && (play_button.is_clicked() || is_key_pressed(KeyCode::Enter)) {
-            let score = score_word().unwrap_or(0);
-            clear_word();
-            if let Ok(mut guard) = total_score.lock() {
-                *guard += score;
-            }
-        }
+
+    if game_state.current_word.len() != 0 && (play_button.is_clicked() || is_key_pressed(KeyCode::Enter)) {
+        let score = score_word().unwrap_or(0);
+        clear_word();
+        game_state.total_score += score;
     }
 
     let x_button = ui::button::Button::new(
@@ -174,7 +181,7 @@ pub fn draw_screen() {
     update();
 }
 
-fn draw_hud() {
+unsafe fn draw_hud() {
     draw_rectangle(
         100.0,
         50.0,
@@ -198,16 +205,14 @@ fn draw_hud() {
         55.0,
         WHITE
     );
-    if let Ok(guard) = round_score.lock() {
-        draw_text(
-            &*guard.to_string(),
-            125.0 + 190.0
-                - measure_text(&*guard.to_string(), None, 40, 1.0).width / 2.0,
-            250.0 - 50.0,
-            60.0,
-            WHITE
-        );
-    }
+    draw_text(
+        &game_state.round_score.to_string(),
+        125.0 + 190.0
+            - measure_text(&game_state.round_score.to_string(), None, 40, 1.0).width / 2.0,
+        250.0 - 50.0,
+        60.0,
+        WHITE
+    );
     
     draw_rectangle(
         125.0,
@@ -219,25 +224,21 @@ fn draw_hud() {
     draw_text(
         "Round Score",
         125.0 + 400.0 / 2.0
-            - measure_text("Total Score", None, 50, 1.0).width / 2.0,
+            - measure_text("Round Score", None, 50, 1.0).width / 2.0,
         250.0 + 90.0
-            - measure_text("Total Score", None, 50, 1.0).height / 2.0,
+            - measure_text("Round Score", None, 50, 1.0).height / 2.0,
         50.0,
         BLACK
     );
-    if let Ok(guard) = total_score.lock() {
-        draw_text(
-            &guard.to_string(),
-            125.0 + 400.0 / 2.0
-                - measure_text(&guard.to_string(), None, 120, 1.0).width / 2.0,
-            250.0 + 190.0
-                - measure_text(&guard.to_string(), None, 120, 1.0).height / 2.0,
-            120.0,
-            BLACK
-        );
-    } else {
-        println!("Error: Failed to get total score lock");
-    }
+    draw_text(
+        &game_state.total_score.to_string(),
+        125.0 + 400.0 / 2.0
+            - measure_text(&game_state.total_score.to_string(), None, 120, 1.0).width / 2.0,
+        250.0 + 190.0
+            - measure_text(&game_state.total_score.to_string(), None, 120, 1.0).height / 2.0,
+        120.0,
+        BLACK
+    );
 
     let coral_rgba = Color::new(255.0 / 255.0, 127.0 / 255.0, 80.0 / 255.0, 1.0);
     
@@ -255,16 +256,14 @@ fn draw_hud() {
         30.0,
         BLACK
     );
-    if let Ok(guard) = words_remaining.lock() {
-        let w = &*guard.to_string();
-        draw_text(
-            &w,
-            175.0 + 125.0 / 2.0 - measure_text(&w, None, 50, 1.0).width / 2.0,
-            460.0 + 60.0,
-            50.0,
-            BLACK
-        );
-    }
+    draw_text(
+        &game_state.words_remaining.to_string(),
+        175.0 + 125.0 / 2.0 - measure_text(&game_state.words_remaining.to_string(),
+                                           None, 50, 1.0).width / 2.0,
+        460.0 + 60.0,
+        50.0,
+        BLACK
+    );
 
     draw_rectangle(
         350.0,
@@ -281,24 +280,14 @@ fn draw_hud() {
         BLACK
     );
 
-    if let Ok(guard) = discards.lock() {
-        let d = &*guard.to_string();
-        draw_text(
-            &d,
-            350.0 + 125.0 / 2.0 - measure_text(&d, None, 50, 1.0).width / 2.0,
-            460.0 + 60.0,
-            50.0,
-            BLACK
-        );
-    } else {
-        draw_text(
-            "0",
-            350.0 + 125.0 / 2.0 - measure_text("0", None, 50, 1.0).width / 2.0,
-            460.0 + 60.0,
-            50.0,
-            BLACK
-        );
-    }
+    let d = &game_state.discards.to_string();
+    draw_text(
+        &d,
+        350.0 + 125.0 / 2.0 - measure_text(&d, None, 50, 1.0).width / 2.0,
+        460.0 + 60.0,
+        50.0,
+        BLACK
+    );
 
     draw_rectangle(
         350.0 - 90.0,
@@ -314,52 +303,45 @@ fn draw_hud() {
         30.0,
         WHITE
     );
-    if let Ok(guard) = round.lock() {
-        draw_text(
-            &*guard.to_string(),
-            350.0 - 90.0 + 125.0 / 2.0 - measure_text(&*guard.to_string(), None, 50, 1.0).width / 2.0,
-            560.0 + 60.0,
-            50.0,
-            WHITE
-        );
-    }
+    draw_text(
+        &game_state.round.to_string(),
+        350.0 - 90.0 + 125.0 / 2.0 - measure_text(&game_state.round.to_string(), None, 50, 1.0).width / 2.0,
+        560.0 + 60.0,
+        50.0,
+        WHITE
+    );
 }
 
-fn draw_tiles() {
-    if let Ok(mut guard) = tiles.lock() {
-        if guard.is_empty() {
-            let mut start_y = 100.0;
-            let mut rand_indexes: Vec<usize> = Vec::new();
-            let mut rng = ::rand::thread_rng();
-            
-            while rand_indexes.len() < 12 {
-                let rand_index = rng.gen_range(0..words.len());
-                if !rand_indexes.contains(&rand_index) {
-                    rand_indexes.push(rand_index);
-                }
+unsafe fn draw_tiles() {
+    let tiles = &mut game_state.tiles;
+    if tiles.is_empty() {
+        let mut start_y = 100.0;
+        let mut rand_indexes: Vec<usize> = Vec::new();
+        let mut rng = ::rand::thread_rng();
+
+        while rand_indexes.len() < 12 {
+            let rand_index = rng.gen_range(0..game_state.words.len());
+            if !rand_indexes.contains(&rand_index) {
+                rand_indexes.push(rand_index);
             }
-            
-            let mut inc = 0;
-            for r in 0..3 {
-                let mut start_x = screen_width() / 2.0 + 50.0;
-                for c in 0..4 {
-                    let tile = ui::tile::Tile::new(*words.get(rand_indexes[inc * 4 + c]).unwrap(), 
-                                                   start_x, start_y);
-                    guard.push(tile);
-                    start_x += 125.0;
-                }
-                start_y += 125.0;
-                inc += 1;
+        }
+
+        let mut inc = 0;
+        for r in 0..3 {
+            let mut start_x = screen_width() / 2.0 + 50.0;
+            for c in 0..4 {
+                let tile = ui::tile::Tile::new(*game_state.words.get(rand_indexes[inc * 4 + c]).unwrap(),
+                                               start_x, start_y);
+                tiles.push(tile);
+                start_x += 125.0;
             }
+            start_y += 125.0;
+            inc += 1;
         }
     }
     
-    if let Ok(guard) = tiles.lock() {
-        for tile in guard.iter() {
-            tile.draw();
-        }
-    } else {
-        println!("Error: Failed to get tiles lock");
+    for tile in &game_state.tiles {
+        tile.draw();
     }
 }
 
@@ -379,121 +361,80 @@ fn redraw(guard: &mut Vec<ui::tile::Tile>) {
     }
 }
 
-fn shuffle_tiles() {
-    if let Ok(mut guard) = tiles.lock() {
-        for i in 0..guard.len() {
-            let j = rand::gen_range(0, guard.len());
-            guard.swap(i, j);
-        }
-        redraw(&mut guard);
-    } else {
-        println!("Error: Failed to get tiles lock");
+unsafe fn shuffle_tiles() {
+    let mut tiles = &mut game_state.tiles;
+    for i in 0..tiles.len() {
+        let j = rand::gen_range(0, tiles.len());
+        tiles.swap(i, j);
+    }
+    redraw(tiles);
+}
+
+unsafe fn discard_tiles() {
+    if game_state.discards > 0 {
+        game_state.tiles.clear();
+        game_state.discards -= 1;
+        clear_word();
     }
 }
 
-fn discard_tiles() {
-    if let Ok(mut guard1) = discards.lock() {
-        if *guard1 > 0 {
-            if let Ok(mut guard2) = tiles.lock() {
-                guard2.clear();
-            } else {
-                println!("Error: Failed to get tiles lock");
-            }
-            *guard1 -= 1;
-            clear_word();
-        }
-    }
+unsafe fn clear_word() {
+    &game_state.current_word.clear();
 }
 
-fn clear_word() {
-    if let Ok(mut word) = current_word.lock() {
-        word.clear();
-    } else {
-        println!("Error: Failed to get current word lock");
-    }
-}
-
-fn score_word() -> Option<i32> {
-    let mut temp = words_remaining.lock().unwrap();
-    if *temp > 0 {
-        let word = current_word.lock().unwrap();
+unsafe fn score_word() -> Option<i32> {
+    if game_state.words_remaining > 0 {
+        let word = &game_state.current_word;
         let set: HashSet<_> = word.chars().collect();
-        if words_db.contains(&word.clone()) && !guessed_words.lock().unwrap().contains(&word.clone())
+        if game_state.words_db.contains(word) && !game_state.guessed_words.contains(word)
             && set.len() != 1 {
-            let score = word.chars().map(|c| scoring.get(&c).unwrap_or(&0)).sum::<i32>()
-                * word.len() as i32;
-            guessed_words.lock().unwrap().insert(word.clone());
-            *temp -= 1;
+            let mut score = 0;
+            for char in word.chars() {
+                score += game_state.scoring.get(&char).unwrap_or(&0);
+            }
+            score *= word.len() as i32;
+            game_state.guessed_words.remove(word);
+            game_state.words_remaining -= 1;
             return Some(score);
         }
-        *temp -= 1;
+        game_state.words_remaining -= 1;
     }
     None
 }
 
-fn update() {
-    if let Ok(mut word) = current_word.lock() {
-        if let Ok(mut guard) = tiles.lock() {
-            for tile in guard.iter_mut() {
-                let tile_letter = tile.get_letter();
-                if let Some(key_code) = char_to_key_code(tile_letter) {
-                    if is_key_pressed(key_code) || tile.is_clicked() {
-                        word.push(tile_letter);
-                    }
-                }
+unsafe fn update() {
+    for tile in &mut game_state.tiles {
+        let tile_letter = tile.get_letter();
+        if let Some(key_code) = char_to_key_code(tile_letter) {
+            if is_key_pressed(key_code) || tile.is_clicked() {
+                game_state.current_word.push(tile_letter);
             }
+        }
+    }
+
+    if game_state.total_score >= game_state.round_score as i32 {
+        ScreenManager::switch_screen(Screen::RoundWinScreen);
+        game_state.round_score += 100;
+        discard_tiles();
+        game_state.discards = 3;
+        game_state.words_remaining = 4;
+        if game_state.round == 5 {
+            ScreenManager::switch_screen(Screen::RoundWinScreen);
         } else {
-            println!("Error: Failed to get tiles lock");
+            game_state.round += 1;
         }
-    } else {
-        println!("Error: Failed to get current word lock");
+        game_state.guessed_words = HashSet::new();
+        game_state.total_score = 0;
     }
 
-    if let Ok(mut guard) = total_score.lock() {
-        if let Ok(mut rs) = round_score.lock() {
-            if *guard >= *rs as i32 {
-                ScreenManager::switch_screen(Screen::RoundWinScreen);
-                *rs += 100;
-                discard_tiles();
-                if let Ok(mut d) = discards.lock() {
-                    *d = 3;
-                }
-                if let Ok(mut w) = words_remaining.lock() {
-                    *w = 4;
-                }
-                if let Ok(mut rounds) = round.lock() {
-                    if *rounds == 5 {
-                        ScreenManager::switch_screen(Screen::WinScreen);
-                    } else {
-                        *rounds = *rounds + 1;
-                    }
-                }
-                if let Ok(mut gw) = guessed_words.lock() {
-                    *gw = HashSet::new();
-                }
-                *guard = 0;
-            }
-        }
-    }
-
-    if let Ok(mut guard) = words_remaining.lock() {
-        if *guard == 0 {
-            ScreenManager::switch_screen(Screen::LoseScreen);
-            *guard = 4;
-            discard_tiles();
-            if let Ok(mut guard) = discards.lock() {
-                *guard = 3;
-            }
-            if let Ok(mut total) = total_score.lock() {
-                *total = 0;
-            }
-            if let Ok(mut guard) = round_score.lock() {
-                *guard = 750;
-            }
-            if let Ok(mut guard) = round.lock() {
-                *guard = 1;
-            }
-        }
+    if game_state.words_remaining == 0 {
+        ScreenManager::switch_screen(Screen::LoseScreen);
+        game_state.words_remaining = 4;
+        discard_tiles();
+        game_state.discards = 3;
+        game_state.total_score = 0;
+        game_state.round_score = 750;
+        game_state.round = 1;
     }
 }
 fn char_to_key_code(c: char) -> Option<KeyCode> {

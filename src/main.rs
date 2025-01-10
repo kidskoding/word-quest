@@ -21,7 +21,7 @@ async fn main() {
                     ui::screen::Screen::Instructions => {
                         instructions::draw_screen();
                     }
-                    ui::screen::Screen::Game => {
+                    ui::screen::Screen::Game => unsafe {
                         game::draw_screen();
                     },
                     ui::screen::Screen::LoseScreen => {
