@@ -1,5 +1,6 @@
 use macroquad::color::{BLACK, GREEN, RED, WHITE};
-use macroquad::prelude::{clear_background, draw_text, screen_height, screen_width};
+use macroquad::input::is_key_pressed;
+use macroquad::prelude::{clear_background, draw_text, screen_height, screen_width, KeyCode};
 use crate::ui;
 
 pub fn draw_screen() {
@@ -28,7 +29,7 @@ pub fn draw_screen() {
         40.0
     );
     start_button.draw();
-    if start_button.is_clicked() {
+    if start_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
         ui::screen::ScreenManager::switch_screen(ui::screen::Screen::Title);
     }
 
