@@ -29,7 +29,7 @@ pub fn draw_screen() {
         40.0
     );
     start_button.draw();
-    if start_button.is_clicked() {
+    if start_button.is_clicked() || is_key_pressed(KeyCode::Enter) {
         ui::screen::ScreenManager::switch_screen(ui::screen::Screen::Game);
     }
 
