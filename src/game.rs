@@ -240,7 +240,7 @@ unsafe fn draw_hud() {
         BLACK
     );
 
-    let coral_rgba = Color::new(255.0 / 255.0, 127.0 / 255.0, 80.0 / 255.0, 1.0);
+    let coral_rgba = Color::new(1.0, 127.0 / 255.0, 80.0 / 255.0, 1.0);
     
     draw_rectangle(
         175.0,
@@ -327,7 +327,7 @@ unsafe fn draw_tiles() {
         }
 
         let mut inc = 0;
-        for r in 0..3 {
+        for _ in 0..3 {
             let mut start_x = screen_width() / 2.0 + 50.0;
             for c in 0..4 {
                 let tile = ui::tile::Tile::new(*game_state.words.get(rand_indexes[inc * 4 + c]).unwrap(),
@@ -393,7 +393,7 @@ unsafe fn score_word() -> Option<i32> {
                 score += game_state.scoring.get(&char).unwrap_or(&0);
             }
             score *= word.len() as i32;
-            game_state.guessed_words.remove(word);
+            game_state.guessed_words.insert(word.clone());
             game_state.words_remaining -= 1;
             return Some(score);
         }
