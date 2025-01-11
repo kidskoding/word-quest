@@ -419,7 +419,7 @@ unsafe fn update() {
         game_state.discards = 3;
         game_state.words_remaining = 4;
         if game_state.round == 5 {
-            ScreenManager::switch_screen(Screen::RoundWinScreen);
+            ScreenManager::switch_screen(Screen::WinScreen);
         } else {
             game_state.round += 1;
         }
